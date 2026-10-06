@@ -193,17 +193,15 @@ if [ $MACHINE_INDEX -eq 1 ]; then
 
   sas=$(az storage container generate-sas -n $results_container_name --connection-string $RESULT_STORAGE_CONNECTION_STRING --https-only --permissions dlrw --expiry $end -o tsv)
 
-  arr_connection=(${RESULT_STORAGE_CONNECTION_STRING//;/ })
+  # Look fields up by name: the portal and the Azure CLI order connection string fields differently.
+  connection_field() {
+    echo "$RESULT_STORAGE_CONNECTION_STRING" | tr ';' '\n' | sed -n "s/^$1=//p" | head -1
+  }
+  protocol=$(connection_field DefaultEndpointsProtocol)
+  account_name=$(connection_field AccountName)
+  endpoint_suffix=$(connection_field EndpointSuffix)
 
-  protocol_string=${arr_connection[0]}
-  arr_protocol_string=(${protocol_string//=/ })
-  protocol=${arr_protocol_string[1]}
-
-  account_string=${arr_connection[1]}
-  arr_account_string=(${account_string//=/ })
-  account_name=${arr_account_string[1]}
-
-  result_storage_url="${protocol}://${account_name}.blob.core.windows.net/${results_container_name}?${sas}"
+  result_storage_url="${protocol:-https}://${account_name}.blob.${endpoint_suffix:-core.windows.net}/${results_container_name}?${sas}"
   if [ $VM_COUNT -gt 1 ]; then
     job_start_time=$(date -u -d "5 minutes" '+%Y-%m-%dT%H:%M:%SZ') # date in ISO 8601 format
   else
