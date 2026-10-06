@@ -1,0 +1,13 @@
+#!/bin/bash
+# Minimal stand-in for the Azure CLI storage commands used by custom-script.sh.
+echo "az $*" >> /stub-logs/az.log
+case "$1 $2 $3" in
+  "storage table exists") echo '{"exists": false}' ;;
+  "storage table create") echo '{"created": true}' ;;
+  "storage container create") echo '{"created": true}' ;;
+  "storage container generate-sas") echo 'se=2026-11-05T00%3A00Z&sp=dlrw&spr=https&sv=2021-06-08&sr=c&sig=stub' ;;
+  "storage entity insert") echo '{"etag": "W/\"datetime%272026-10-06T00%3A00%3A00Z%27\""}' ;;
+  "storage entity show") echo '{"etag":"W/\"datetime%272026-10-06T00%3A00%3A00Z%27\"","JobStartTime":"2026-10-06T00:00:00Z","SAS_URL":"https://stub.blob.core.windows.net/c?sig=stub","NoOfClientsStarted":"1","NoOfClientsCompleted":"0"}' ;;
+  "storage entity merge") echo '{"etag": "W/\"datetime%272026-10-06T00%3A01%3A00Z%27\""}' ;;
+  *) echo "unhandled: az $*" >&2; exit 1 ;;
+esac

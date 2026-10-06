@@ -52,6 +52,12 @@ echo "##########DELAY_IN_MS###########: $DELAY_IN_MS"
 echo "##########USER_AGENT###########: $USER_AGENT"
 echo "##########CONSISTENCY_LEVEL###########: $CONSISTENCY_LEVEL"
 echo "###########USE_UPSERT########: $USE_UPSERT"
+echo "##########BENCHMARK_CLIENT###########: $BENCHMARK_CLIENT"
+echo "##########UPDATE_MODE###########: $UPDATE_MODE"
+
+# Which YCSB client to build and run: "java" (Azure/YCSB, the default) or "rust"
+# (cosmos/sql/tools/rust/ycsb/client in this repository).
+benchmark_client=${BENCHMARK_CLIENT:-java}
 
 # The index of the record to start at during the Load
 insertstart=$((YCSB_RECORD_COUNT * (MACHINE_INDEX - 1)))
@@ -96,30 +102,59 @@ sudo rm -rf /tmp/cosmos_client_logs
 # Setting up logrotate for propetually running worklaods to avoid disk space issues.
 echo "################# Setting up logrotate ###################"
 if [ "$YCSB_OPERATION_COUNT" -eq 0 ]; then
-  cp -r ./azure-db-benchmarking/cosmos/sql/tools/java/ycsb/config/* /home/${ADMIN_USER_NAME}
+  cp -r ./azure-db-benchmarking/cosmos/sql/tools/$benchmark_client/ycsb/config/* /home/${ADMIN_USER_NAME}
   sudo logrotate /home/${ADMIN_USER_NAME}/logrotate/logrotate.conf --state /home/${ADMIN_USER_NAME}/logrotate/logrotate.state
   sudo crontab -r
   crontab -l | { cat; echo "0 * * * * /usr/sbin/logrotate /home/${ADMIN_USER_NAME}/logrotate/logrotate.conf --state /home/${ADMIN_USER_NAME}/logrotate/logrotate.state"; } | crontab -
 fi
 
-#Build YCSB from source
-echo "########## Cloning YCSB repository ##########"
-git clone -b "$YCSB_GIT_BRANCH_NAME" --single-branch "$YCSB_GIT_REPO_URL"
-cd YCSB
-echo "########## Pulling Latest YCSB ##########"
-git pull
-echo "########## Building YCSB ##########"
-mvn -pl site.ycsb:$DB_BINDING_NAME-binding -am clean package
-cp -r ./$DB_BINDING_NAME/target/ycsb-$DB_BINDING_NAME-binding*.tar.gz /tmp/ycsb
-cp -r ./$DB_BINDING_NAME/conf/* /tmp/ycsb
-cd /tmp/ycsb/
-
-ycsb_folder_name=ycsb-$DB_BINDING_NAME-binding-*-SNAPSHOT
 user_home="/home/${ADMIN_USER_NAME}"
-echo "########## Extracting YCSB ##########"
-tar xfvz ycsb-$DB_BINDING_NAME-binding*.tar.gz
+if [ "$benchmark_client" = "rust" ]; then
+  #Build the Rust YCSB client from the benchmarking tools repository
+  rust_client_dir="$(pwd)/azure-db-benchmarking/cosmos/sql/tools/rust/ycsb/client"
+  # The CustomScript extension runs as root without a predictable HOME, so pin the toolchain location.
+  export RUSTUP_HOME=/opt/rust/rustup
+  export CARGO_HOME=/opt/rust/cargo
+  export PATH="$CARGO_HOME/bin:$PATH"
+  if ! command -v cc >/dev/null 2>&1; then
+    echo "########## Installing C toolchain ##########"
+    sudo apt-get update
+    sudo apt-get install -y build-essential pkg-config
+  fi
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "########## Installing Rust toolchain ##########"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path
+  fi
+  echo "########## Building Rust YCSB ##########"
+  (cd "$rust_client_dir" && cargo build --release --locked)
+  ycsb_folder_name=ycsb-azurecosmos-rust
+  cd /tmp/ycsb/
+  mkdir -p ./$ycsb_folder_name/bin
+  cp "$rust_client_dir/target/release/ycsb" ./$ycsb_folder_name/bin/ycsb
+  cp -r "$rust_client_dir/workloads" ./$ycsb_folder_name/
+  cp "$rust_client_dir/conf/azurecosmos.properties" ./$ycsb_folder_name/
+  # Picked up by azurecosmos-run.sh.
+  export YCSB_BIN=./bin/ycsb
+  export updateMode="$UPDATE_MODE"
+else
+  #Build YCSB from source
+  echo "########## Cloning YCSB repository ##########"
+  git clone -b "$YCSB_GIT_BRANCH_NAME" --single-branch "$YCSB_GIT_REPO_URL"
+  cd YCSB
+  echo "########## Pulling Latest YCSB ##########"
+  git pull
+  echo "########## Building YCSB ##########"
+  mvn -pl site.ycsb:$DB_BINDING_NAME-binding -am clean package
+  cp -r ./$DB_BINDING_NAME/target/ycsb-$DB_BINDING_NAME-binding*.tar.gz /tmp/ycsb
+  cp -r ./$DB_BINDING_NAME/conf/* /tmp/ycsb
+  cd /tmp/ycsb/
+
+  ycsb_folder_name=ycsb-$DB_BINDING_NAME-binding-*-SNAPSHOT
+  echo "########## Extracting YCSB ##########"
+  tar xfvz ycsb-$DB_BINDING_NAME-binding*.tar.gz
+  cp ./*.properties ./$ycsb_folder_name
+fi
 cp ./$DB_BINDING_NAME-run.sh ./$ycsb_folder_name
-cp ./*.properties ./$ycsb_folder_name
 cp ./aggregate_multiple_file_results.py ./$ycsb_folder_name
 cp ./converting_log_to_csv.py ./$ycsb_folder_name
 
@@ -129,7 +164,9 @@ cp ./chaos/*.ps1 ./$ycsb_folder_name
 
 cd ./$ycsb_folder_name
 
-if [[ $DB_BINDING_NAME == "azurecosmos" ]]; then
+if [[ $DB_BINDING_NAME == "azurecosmos" ]] && [ "$benchmark_client" = "rust" ]; then
+  tool_api="ycsb_sql_rust"
+elif [[ $DB_BINDING_NAME == "azurecosmos" ]]; then
   tool_api="ycsb_sql"
 elif [[ $DB_BINDING_NAME == "mongodb"* ]]; then
   tool_api="ycsb_mongo"

@@ -15,6 +15,9 @@ else
     operation=$ycsb_operation
 fi
 
+# YCSB launcher: the Java client's bin/ycsb.sh by default; the Rust client sets YCSB_BIN=./bin/ycsb.
+ycsb_bin=${YCSB_BIN:-./bin/ycsb.sh}
+
 # Updating workload file
 if [ ! -z "$recordcount" ]; then
    sed -i "s/^[#]*\s*recordcount=.*/recordcount=$recordcount/" workloads/$workload
@@ -70,8 +73,9 @@ if [ ! -z "$uri" ]; then
    sed -i "s|^[#]*\s*azurecosmos.uri\ =.*|azurecosmos.uri\ =\ $uri|" azurecosmos.properties
 fi
 
+# Account keys are base64 and usually contain '/', so use '|' as the sed delimiter.
 if [ ! -z "$primaryKey" ]; then
-   sed -i "s/^[#]*\s*azurecosmos.primaryKey\ =.*/azurecosmos.primaryKey\ =\ $primaryKey/" azurecosmos.properties
+   sed -i "s|^[#]*\s*azurecosmos.primaryKey\ =.*|azurecosmos.primaryKey\ =\ $primaryKey|" azurecosmos.properties
 fi
 
 if [ ! -z "$appInsightConnectionString" ]; then
@@ -79,7 +83,7 @@ if [ ! -z "$appInsightConnectionString" ]; then
 fi
 
 if [ ! -z "$databaseName" ]; then
-   sed -i "s/^[#]*\s*azurecosmos.$databaseName\ =.*/azurecosmos.databaseName\ =\ $databaseName/" azurecosmos.properties
+   sed -i "s/^[#]*\s*azurecosmos.databaseName\ =.*/azurecosmos.databaseName\ =\ $databaseName/" azurecosmos.properties
 fi
 
 if [ ! -z "$useUpsert" ]; then
@@ -100,6 +104,11 @@ fi
 
 if [ ! -z "$preferredRegionList" ]; then
    sed -i "s/^[#]*\s*azurecosmos.preferredRegionList\ =.*/azurecosmos.preferredRegionList\ =\ $preferredRegionList/" azurecosmos.properties
+fi
+
+# Rust client only; the Java properties file has no such line, so this is a no-op there.
+if [ ! -z "$updateMode" ]; then
+   sed -i "s/^[#]*\s*azurecosmos.updateMode\ =.*/azurecosmos.updateMode\ =\ $updateMode/" azurecosmos.properties
 fi
 
 # CONNECTION OPTIONS
@@ -128,7 +137,7 @@ if [ ! -z "$directMaxConnectionsPerEndpoint" ]; then
 fi
 
 if [ ! -z "$gatewayIdleConnectionTimeoutInSeconds" ]; then
-   sed -i "s/^[#]*\s*azurecosmos.gatewayIdleConnectionTimeoutInSecondst\ =.*/azurecosmos.gatewayIdleConnectionTimeoutInSeconds\ =\ $gatewayIdleConnectionTimeoutInSeconds/" azurecosmos.properties
+   sed -i "s/^[#]*\s*azurecosmos.gatewayIdleConnectionTimeoutInSeconds\ =.*/azurecosmos.gatewayIdleConnectionTimeoutInSeconds\ =\ $gatewayIdleConnectionTimeoutInSeconds/" azurecosmos.properties
 fi
 
 if [ ! -z "$directIdleConnectionTimeoutInSeconds" ]; then
@@ -156,13 +165,13 @@ log_filename="/tmp/ycsb.log"
 
 if [ ! -z "$threads" ] && [ ! -z "$target" ]
 then
-  ./bin/ycsb.sh $operation azurecosmos -P workloads/$workload -P azurecosmos.properties -s -threads $threads -target $target 2>&1 | tee -a "$log_filename"
+  "$ycsb_bin" $operation azurecosmos -P workloads/$workload -P azurecosmos.properties -s -threads $threads -target $target 2>&1 | tee -a "$log_filename"
 elif [ ! -z "$threads" ]
 then
-  ./bin/ycsb.sh $operation azurecosmos -P workloads/$workload -P azurecosmos.properties -s -threads $threads 2>&1 | tee -a "$log_filename"
+  "$ycsb_bin" $operation azurecosmos -P workloads/$workload -P azurecosmos.properties -s -threads $threads 2>&1 | tee -a "$log_filename"
 elif [ ! -z "$target" ]
 then
-  ./bin/ycsb.sh $operation azurecosmos -P workloads/$workload -P azurecosmos.properties -s -target $target 2>&1 | tee -a "$log_filename"
+  "$ycsb_bin" $operation azurecosmos -P workloads/$workload -P azurecosmos.properties -s -target $target 2>&1 | tee -a "$log_filename"
 else
-  ./bin/ycsb.sh $operation azurecosmos -P workloads/$workload -P azurecosmos.properties -s 2>&1 | tee -a "$log_filename"
+  "$ycsb_bin" $operation azurecosmos -P workloads/$workload -P azurecosmos.properties -s 2>&1 | tee -a "$log_filename"
 fi

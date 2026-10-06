@@ -1,0 +1,13 @@
+#!/bin/bash
+# Stand-in for azcopy: "uploads" to /results/<container>/ and "downloads" from it.
+echo "azcopy $*" >> /stub-logs/azcopy.log
+[ "$1" = "copy" ] || exit 0
+src="$2"; dst="$3"
+to_local() { local u="${1%%\?*}"; u="${u#https://}"; echo "/results/${u#*/}"; }
+if [[ "$dst" == https://* ]]; then
+  d=$(to_local "$dst"); mkdir -p "$d"
+  if [ ! -e "$src" ]; then echo "azcopy: failed to perform copy command due to error: cannot start job due to error: cannot scan the path $src" >&2; exit 1; fi
+  cp -r "$src" "$d"/
+elif [[ "$src" == https://* ]]; then
+  s=$(to_local "$src"); mkdir -p "$dst"; cp -r $s "$dst"/
+fi
