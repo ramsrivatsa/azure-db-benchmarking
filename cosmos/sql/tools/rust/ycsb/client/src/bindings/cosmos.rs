@@ -122,6 +122,7 @@ pub struct CosmosConfig {
     pub app_insight_connection_string: Option<String>,
     pub update_mode: UpdateMode,
     pub binary_encoding: Option<bool>,
+    pub session_capturing_disabled: bool,
 }
 
 impl CosmosConfig {
@@ -188,6 +189,7 @@ impl CosmosConfig {
             binary_encoding: p
                 .get("azurecosmos.binaryEncoding")
                 .map(|v| v.eq_ignore_ascii_case("true")),
+            session_capturing_disabled: p.parse_bool("azurecosmos.sessionCapturingDisabled", false),
         })
     }
 }
@@ -416,7 +418,8 @@ async fn connect(config: &CosmosConfig) -> Result<Connection> {
 
     let operation_options = OperationOptionsBuilder::new()
         .with_read_consistency_strategy(config.consistency_level.read_strategy())
-        .with_throttling_retry_options(throttling);
+        .with_throttling_retry_options(throttling)
+        .with_session_capturing_disabled(config.session_capturing_disabled);
 
     let mut builder = CosmosClient::builder()
         .with_runtime(runtime)
@@ -789,6 +792,7 @@ mod tests {
         assert_eq!(c.update_mode, UpdateMode::Replace);
         assert!(c.preferred_regions.is_empty());
         assert_eq!(c.binary_encoding, None);
+        assert!(!c.session_capturing_disabled);
     }
 
     #[test]
@@ -805,7 +809,8 @@ mod tests {
             "{REQUIRED}azurecosmos.useUpsert = true\nazurecosmos.useGateway = true\n\
              azurecosmos.consistencyLevel = EVENTUAL\nazurecosmos.preferredRegionList = East US, West US 2\n\
              azurecosmos.maxRetryAttemptsOnThrottledRequests = 3\nazurecosmos.updateMode = PATCH\n\
-             azurecosmos.diagnosticsLatencyThresholdInMS = 25\nazurecosmos.gatewayMaxConnectionPoolSize = oops\n"
+             azurecosmos.diagnosticsLatencyThresholdInMS = 25\nazurecosmos.gatewayMaxConnectionPoolSize = oops\n\
+             azurecosmos.sessionCapturingDisabled = true\n"
         )))
         .unwrap();
         assert!(c.use_upsert);
@@ -815,6 +820,7 @@ mod tests {
         assert_eq!(c.max_retry_attempts_on_throttled_requests, 3);
         assert_eq!(c.update_mode, UpdateMode::Patch);
         assert_eq!(c.diagnostics_latency_threshold_in_ms, 25);
+        assert!(c.session_capturing_disabled);
         // Unparsable integers fall back to the default, as in the Java binding.
         assert_eq!(c.gateway_max_connection_pool_size, -1);
     }
