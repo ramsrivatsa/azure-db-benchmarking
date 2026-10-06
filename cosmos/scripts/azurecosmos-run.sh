@@ -106,9 +106,13 @@ if [ ! -z "$preferredRegionList" ]; then
    sed -i "s/^[#]*\s*azurecosmos.preferredRegionList\ =.*/azurecosmos.preferredRegionList\ =\ $preferredRegionList/" azurecosmos.properties
 fi
 
-# Rust client only; the Java properties file has no such line, so this is a no-op there.
+# Rust client only; the Java properties file has no such lines, so these are no-ops there.
 if [ ! -z "$updateMode" ]; then
    sed -i "s/^[#]*\s*azurecosmos.updateMode\ =.*/azurecosmos.updateMode\ =\ $updateMode/" azurecosmos.properties
+fi
+
+if [ ! -z "$sessionCapturingDisabled" ]; then
+   sed -i "s/^[#]*\s*azurecosmos.sessionCapturingDisabled\ =.*/azurecosmos.sessionCapturingDisabled\ =\ $sessionCapturingDisabled/" azurecosmos.properties
 fi
 
 # CONNECTION OPTIONS
